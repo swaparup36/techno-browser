@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>techno-browser Connect</title>
+  <style>
+    :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    * { box-sizing: border-box; }
+    body { min-height: 100vh; margin: 0; color: #f6f7fb; background: #161923; }
+    header { display: flex; align-items: center; gap: 14px; height: 76px; padding: 0 max(28px, calc((100vw - 1020px) / 2)); border-bottom: 1px solid #353948; background: #202430; }
+    .logo { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: #2876ef; color: #fff; font-size: 24px; font-weight: 800; }
+    header strong { font-size: 20px; }
+    header button { margin: 0 0 0 auto; white-space: nowrap; }
+    main { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(320px, 1.4fr); gap: 24px; max-width: 1020px; margin: 48px auto; padding: 0 28px; }
+    .card { padding: 32px; border: 1px solid #353948; border-radius: 16px; background: #232735; box-shadow: 0 12px 40px #080a1238; }
+    h1 { margin: 0 0 12px; font-size: 24px; }
+    h2 { margin: 0 0 16px; font-size: 17px; }
+    p { color: #b8becd; line-height: 1.55; }
+    label { display: block; margin: 24px 0 10px; color: #cdd2df; font-size: 13px; font-weight: 600; }
+    input { display: block; width: 100%; height: 48px; padding: 0 14px; border: 1px solid #565c70; border-radius: 9px; outline: 0; background: #171a25; color: #fff; font: inherit; font-size: 17px; }
+    input:focus { border-color: #4288ff; box-shadow: 0 0 0 3px #4288ff36; }
+    button { height: 42px; margin-top: 18px; padding: 0 26px; border: 0; border-radius: 9px; background: #2876ef; color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+    button:hover { background: #4288ff; }
+    .your-id { margin-top: 26px; padding: 16px; border: 1px solid #3a4153; border-radius: 10px; background: #1b1f2a; }
+    .your-id small { display: block; margin-bottom: 8px; color: #abb2c2; }
+    .your-id strong { font-size: 18px; letter-spacing: .05em; }
+    .wide { grid-column: 1 / -1; }
+    .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 20px; }
+    .field-grid label { margin-top: 16px; }
+    .field-grid input { margin-top: 8px; }
+    .status { min-height: 24px; margin-bottom: 0; }
+    .status.error { color: #ff9696; }
+    [hidden] { display: none !important; }
+    a { color: #a6c7ff; }
+    @media (max-width: 700px) { main, .field-grid { grid-template-columns: 1fr; } main { margin-top: 24px; } }
+  </style>
+</head>
+<body>
+  <header><span class="logo">T</span><strong>techno-browser</strong><button id="settings-toggle" type="button" aria-expanded="false">Server settings</button></header>
+  <main>
+    <section class="card">
+      <h2>This device</h2>
+      <p>Use your ID to let someone connect to this computer.</p>
+      <div class="your-id"><small>Your ID</small><strong id="local-id">Loading…</strong></div>
+      <div class="your-id"><small>One-time password</small><strong id="local-password">Loading...</strong><br><button id="refresh-password" type="button">Refresh password</button></div>
+    </section>
+    <section class="card">
+      <h1>Connect to a remote desktop</h1>
+      <p>Enter the ID of the computer you want to control.</p>
+      <form id="connect"><label for="remote-id">Remote ID</label><input id="remote-id" autocomplete="off" spellcheck="false" placeholder="Enter Remote ID" required autofocus><button type="submit">Connect</button></form>
+      <div id="recent" hidden><h2>Recent connections</h2><div id="recent-list"></div></div>
+    </section>
+    <section class="card wide" id="settings-card" hidden>
+      <h2>ID / Relay server</h2>
+      <p>Use the same server address and public key on both computers. Leave Relay and API blank for a basic self-hosted server.</p>
+      <form id="server-form">
+        <div class="field-grid">
+          <label for="id-server">ID Server<input id="id-server" autocomplete="off" placeholder="server.example.com or public IP"></label>
+          <label for="server-key">Public Key<input id="server-key" autocomplete="off" spellcheck="false" placeholder="Contents of id_ed25519.pub"></label>
+          <label for="relay-server">Relay Server (optional)<input id="relay-server" autocomplete="off" placeholder="Leave blank when on the same host"></label>
+          <label for="api-server">API Server (optional)<input id="api-server" autocomplete="off" placeholder="Pro only"></label>
+        </div>
+        <button id="save-server" type="submit">Save server settings</button>
+        <p id="settings-status" class="status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const bridge = params.get('bridge') || '';
+    document.getElementById('local-id').textContent = params.get('id') || 'Unavailable';
+    document.getElementById('remote-id').value = params.get('last') || '';
+    try {
+      const peers = JSON.parse(params.get('recent') || '[]');
+      const list = document.getElementById('recent-list');
+      for (const peer of peers) {
+        if (!peer.id) continue;
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.textContent = peer.name ? peer.name + ' · ' + peer.id : peer.id;
+        item.style.cssText = 'display:block;width:100%;margin:8px 0;text-align:left;background:#303749';
+        item.addEventListener('click', () => connectTo(peer.id));
+        list.appendChild(item);
+      }
+      document.getElementById('recent').hidden = !list.children.length;
+    } catch (_) { document.getElementById('recent').hidden = true; }
+    function sendToApp(type, values = {}) {
+      if (!window.chrome || !window.chrome.webview || !bridge) return false;
+      window.chrome.webview.postMessage(JSON.stringify({type, bridge, ...values}));
+      return true;
+    }
+    function connectTo(id) {
+      if (!sendToApp('connect', {id})) {
+        location.href = 'techno://connect/' + encodeURIComponent(id);
+      }
+    }
+    document.getElementById('settings-toggle').addEventListener('click', function () {
+      const card = document.getElementById('settings-card');
+      card.hidden = !card.hidden;
+      this.setAttribute('aria-expanded', String(!card.hidden));
+    });
+    document.getElementById('refresh-password').addEventListener('click', function () {
+      if (!sendToApp('refresh-password')) document.getElementById('local-password').textContent = 'Unavailable';
+    });
+    document.getElementById('server-form').addEventListener('submit', function (event) {
+      event.preventDefault();
+      const status = document.getElementById('settings-status');
+      status.classList.remove('error');
+      status.textContent = 'Saving...';
+      const sent = sendToApp('save-server', {
+        idServer: document.getElementById('id-server').value.trim(),
+        relayServer: document.getElementById('relay-server').value.trim(),
+        apiServer: document.getElementById('api-server').value.trim(),
+        key: document.getElementById('server-key').value.trim(),
+      });
+      if (!sent) { status.classList.add('error'); status.textContent = 'Server settings are unavailable in this browser runtime.'; }
+    });
+    if (window.chrome && window.chrome.webview) {
+      window.chrome.webview.addEventListener('message', function (event) {
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+        if (data.type === 'connect-state') {
+          document.getElementById('local-id').textContent = data.id || 'Unavailable';
+          document.getElementById('local-password').textContent = data.password || '-';
+          document.getElementById('id-server').value = data.idServer || '';
+          document.getElementById('relay-server').value = data.relayServer || '';
+          document.getElementById('api-server').value = data.apiServer || '';
+          document.getElementById('server-key').value = data.key || '';
+        } else if (data.type === 'server-result') {
+          const status = document.getElementById('settings-status');
+          status.classList.toggle('error', !data.ok);
+          status.textContent = data.message || (data.ok ? 'Saved.' : 'Could not save server settings.');
+        } else if (data.type === 'password-result') {
+          document.getElementById('local-password').textContent = data.password || '-';
+        }
+      });
+      sendToApp('ready');
+    }
+    document.getElementById('connect').addEventListener('submit', function (event) {
+      event.preventDefault();
+      const id = document.getElementById('remote-id').value.trim();
+      if (id) connectTo(id);
+    });
+  </script>
+</body>
+</html>

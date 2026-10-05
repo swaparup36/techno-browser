@@ -1,0 +1,25 @@
+{
+    auto_https disable_redirects
+}
+
+{$RUSTDESK_DOMAIN} {
+    tls {
+        issuer acme {
+            disable_http_challenge
+        }
+    }
+
+    handle /ws/id {
+        reverse_proxy 127.0.0.1:21118 {
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    handle /ws/relay {
+        reverse_proxy 127.0.0.1:21119 {
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    respond 404
+}

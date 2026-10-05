@@ -1,0 +1,28 @@
+services:
+  hbbs:
+    image: techno/rustdesk-server-wss:local
+    build: ./server-wss
+    command: ["hbbs", "-b", "127.0.0.1", "-r", "${RUSTDESK_DOMAIN}:21117"]
+
+  hbbr:
+    image: techno/rustdesk-server-wss:local
+    build: ./server-wss
+    command: ["hbbr", "-b", "127.0.0.1"]
+
+  caddy:
+    image: caddy:2
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      RUSTDESK_DOMAIN: ${RUSTDESK_DOMAIN}
+    volumes:
+      - ./server-wss/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - hbbs
+      - hbbr
+
+volumes:
+  caddy_data:
+  caddy_config:
